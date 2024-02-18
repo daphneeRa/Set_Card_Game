@@ -3,6 +3,7 @@ package bguspl.set.ex;
 import bguspl.set.Env;
 
 import java.util.Arrays;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Objects;
 import java.util.stream.Collectors;
@@ -28,7 +29,10 @@ public class Table {
      * Mapping between a card and the slot it is in (null if none).
      */
     protected final Integer[] cardToSlot; // slot per card (if any)
-
+    /**
+     *array of a players and their tokens 
+     */
+    protected LinkedList<Integer>[] playersTokens; // player token per slot (if any)
     /**
      * Constructor for testing.
      *
@@ -37,12 +41,14 @@ public class Table {
      * @param cardToSlot - mapping between a card and the slot it is in (null if none).
      */
     public Table(Env env, Integer[] slotToCard, Integer[] cardToSlot) {
-
         this.env = env;
         this.slotToCard = slotToCard;
         this.cardToSlot = cardToSlot;
+        this.playersTokens= new LinkedList[env.config.players];
+        for (int i=0;i<playersTokens.length;i++){
+            playersTokens[i]=new LinkedList<Integer>();
+        }
     }
-
     /**
      * Constructor for actual usage.
      *
@@ -90,12 +96,11 @@ public class Table {
         try {
             Thread.sleep(env.config.tableDelayMillis);
         } catch (InterruptedException ignored) {}
-
+        //TODO
         synchronized(this){
-            cardToSlot[card] = slot;
-            slotToCard[slot] = card;
-        }
-        // TODO implement
+        cardToSlot[card] = slot;
+        slotToCard[slot] = card;
+        env.ui.placeCard(card, slot);}
     }
 
     /**
@@ -106,12 +111,12 @@ public class Table {
         try {
             Thread.sleep(env.config.tableDelayMillis);
         } catch (InterruptedException ignored) {}
-
+        //TODO
         synchronized(this){
             cardToSlot[slotToCard[slot]] = null;
             slotToCard[slot] = null;
+            env.ui.removeCard(slot);
         }
-        // TODO implement
     }
 
     /**
@@ -120,9 +125,11 @@ public class Table {
      * @param slot   - the slot on which to place the token.
      */
     public void placeToken(int player, int slot) {
-
-
         // TODO implement
+        synchronized(this){
+        playersTokens[player].add(slot);
+        env.ui.placeToken(player, slot);
+        }
     }
 
     /**
@@ -133,6 +140,25 @@ public class Table {
      */
     public boolean removeToken(int player, int slot) {
         // TODO implement
-        return false;
+        synchronized(this){
+            if(playersTokens[player].contains(slot)){
+                playersTokens[player].remove(playersTokens[player].indexOf(slot));
+                env.ui.removeToken(player, slot);
+                return true;
+            }
+            else {
+                return false;
+            }
+        }
+    }
+    public void removeAllTokensFromTable(){
+        synchronized(this){
+            for (int i=0;i<playersTokens.length;i++){
+                playersTokens[i].clear();
+            }
+            env.ui.removeTokens();
+        }
+                
+                
     }
 }
