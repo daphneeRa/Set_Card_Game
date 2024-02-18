@@ -1,6 +1,7 @@
 package bguspl.set.ex;
-
-import static java.lang.String.format;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.Iterator;
+import java.util.Random;
 
 import bguspl.set.Env;
 
@@ -30,7 +31,7 @@ public class Player implements Runnable {
     /**
      * The thread representing the current player.
      */
-    private Thread playerThread;
+    protected Thread playerThread;
 
     /**
      * The thread of the AI (computer) player (an additional thread used to generate key presses).
@@ -51,8 +52,15 @@ public class Player implements Runnable {
      * The current score of the player.
      */
     private int score;
-
     /**
+     * The Dealer that controls the game 
+     */
+    private Dealer dealer;
+    /**
+     * The class constructor.
+     */
+    protected ArrayBlockingQueue<Integer> playersActions;
+     /**
      * The class constructor.
      *
      * @param env    - the environment object.
@@ -60,14 +68,17 @@ public class Player implements Runnable {
      * @param table  - the table object.
      * @param id     - the id of the player.
      * @param human  - true iff the player is a human player (i.e. input is provided manually, via the keyboard).
+     * @param playersActions  - actions that the player does. 
+     
      */
     public Player(Env env, Dealer dealer, Table table, int id, boolean human) {
         this.env = env;
         this.table = table;
         this.id = id;
         this.human = human;
+        this.dealer=dealer;
+        this.playersActions = new ArrayBlockingQueue<Integer>(3);
     }
-
     /**
      * The main player thread of each player starts here (main loop for the player thread).
      */
@@ -76,13 +87,30 @@ public class Player implements Runnable {
         playerThread = Thread.currentThread();
         env.logger.info("thread " + Thread.currentThread().getName() + " starting.");
         if (!human) createArtificialIntelligence();
-
+        // TODO implement main player loop
         while (!terminate) {
-            // TODO implement main player loop
-        }
-        try {
-            playerThread.join();  
-        } catch (Exception e) {}
+            synchronized(playerThread){
+                while(playersActions.isEmpty()){
+                    try {
+                        wait();
+                    } catch (InterruptedException intterupt) {}
+                }
+                while(!playersActions.isEmpty()){
+                    int currAction =(playersActions.poll());
+                    if (!table.removeToken(id, currAction)){
+                        table.placeToken(id,currAction);
+                    }
+                }
+                if(table.playersTokens[id].size()==3){
+                    try {
+                        dealer.s.acquire();
+                        dealer.setHasSetToCheck(id);  
+                    } catch (InterruptedException interrupt) {}
+                    dealer.s.release();
+                }
+
+            }
+        }    
         if (!human) try { aiThread.join(); } catch (InterruptedException ignored) {}
         env.logger.info("thread " + Thread.currentThread().getName() + " terminated.");
     }
@@ -97,9 +125,13 @@ public class Player implements Runnable {
             env.logger.info("thread " + Thread.currentThread().getName() + " starting.");
             while (!terminate) {
                 // TODO implement player key press simulator
-                try {
-                    synchronized (this) { wait(); }
-                } catch (InterruptedException ignored) {}
+                while(playersActions.size()==3){ 
+                    try {
+                        synchronized (this) { wait(); }
+                    } catch (InterruptedException ignored) {}
+                }
+                Random rand = new Random();
+                keyPressed(rand.nextInt(env.config.tableSize));
             }
             env.logger.info("thread " + Thread.currentThread().getName() + " terminated.");
         }, "computer-" + id);
@@ -110,8 +142,9 @@ public class Player implements Runnable {
      * Called when the game should be terminated.
      */
     public void terminate() {
-        terminate = true;
         // TODO implement
+        terminate=true;
+
     }
 
     /**
@@ -120,8 +153,12 @@ public class Player implements Runnable {
      * @param slot - the slot corresponding to the key pressed.
      */
     public void keyPressed(int slot) {
-        
         // TODO implement
+     ///// need to add condition for cardspressed אם יש 3 נבחרים ורוצים לבחור אחד נוסף זה לא ימנע כי הa action ריק 
+        if((table.playersTokens[id].size()==3&&table.playersTokens[id].contains(slot))|(table.playersTokens[id].size()<3)){
+          playersActions.add(slot);
+        }
+        playerThread.notifyAll();
     }
 
     /**
@@ -132,19 +169,41 @@ public class Player implements Runnable {
      */
     public void point() {
         // TODO implement
-
-        int ignored = table.countCards(); // this part is just for demonstration in the unit tests
-        env.ui.setScore(id, ++score);
+        synchronized(playerThread){
+            int ignored = table.countCards(); // this part is just for demonstration in the unit tests
+            env.ui.setScore(id, ++score);
+            score=score++;
+            try {
+                env.ui.setFreeze(id, env.config.pointFreezeMillis);
+                Thread.sleep(env.config.pointFreezeMillis);
+            } catch (InterruptedException interrupt ) {}
+        }
     }
 
     /**
      * Penalize a player and perform other related actions.
      */
     public void penalty() {
-        // TODO implement
+        //TODO implement
+        synchronized(playerThread){
+            try {
+                env.ui.setFreeze(id, env.config.penaltyFreezeMillis);
+                Thread.sleep(env.config.penaltyFreezeMillis);
+            } catch (InterruptedException interrupt ) {}
+        }
     }
-
     public int score() {
         return score;
     }
+
+    public void removeTokenFromActionsQueue(int slot){ //the method will remove the token from the player's actions queue
+        playersActions.remove(slot);
+    }
+
+    public void removeAllActions(){
+        playersActions.clear();
+    //    notifyAll();
+    }
+
+
 }
