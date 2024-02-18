@@ -3,7 +3,8 @@ package bguspl.set.ex;
 import bguspl.set.Env;
 import bguspl.set.ThreadLogger;
 
-import java.util.LinkedList;
+import java.util.LinkedList; 
+import java.util.List;
 import java.util.List;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.Semaphore;
